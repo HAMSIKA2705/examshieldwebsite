@@ -139,7 +139,8 @@
 <script>
 /* ============================= CONSTANTS ============================= */
 const DB_KEY = 'examshield_db_v1';
-const STUDENT_DOMAIN = '@student.examshield.edu';
+// Built-in demo accounts. Anyone can also sign up fresh as Admin, Recruiter or Candidate —
+// new signups are stored in DB.admins / DB.recruiters / DB.candidates.
 const ADMIN_ACCOUNTS = [
   { email:'admin@examshield.com', password:'Admin@123', name:'Priya Admin' }
 ];
@@ -166,9 +167,15 @@ async function loadDB(){
     const r = await window.storage.get('db', true);
     DB = JSON.parse(r.value);
   }catch(e){
-    DB = { candidates: [], exams: [], submissions: [] };
+    DB = { candidates: [], admins: [], recruiters: [], exams: [], submissions: [] };
     await saveDB();
   }
+  // Safety net for DBs saved before admins/recruiters signup existed
+  DB.candidates = DB.candidates || [];
+  DB.admins = DB.admins || [];
+  DB.recruiters = DB.recruiters || [];
+  DB.exams = DB.exams || [];
+  DB.submissions = DB.submissions || [];
 }
 async function saveDB(){
   try{ await window.storage.set('db', JSON.stringify(DB), true); }
@@ -260,7 +267,7 @@ function topbar(activeLabel){
       <div style="display:flex;align-items:center;gap:14px;">
         <div style="text-align:right;">
           <div style="font-size:13px;font-weight:600;">${esc(session.name)}</div>
-          <div style="font-size:11px;color:var(--text-dim);">${roleLabel} · ${esc(session.email)}</div>
+          <div style="font-size:11px;color:var(--text-dim);">${roleLabel} · ${esc(session.identifier)}</div>
         </div>
         <button class="btn-ghost" onclick="logout()">Log out</button>
       </div>` : ''}
@@ -315,12 +322,12 @@ function renderLanding(){
 const ROLE_META = {
   candidate: {
     label:'Candidate', color:'var(--accent)',
-    desc:'Take proctored exams, answer MCQs and coding questions, and get an instant AI-graded report.',
+    desc:'Log in with your Student ID to take proctored exams and get an instant AI-graded report.',
     icon:`<svg viewBox="0 0 40 40" width="30" height="30" fill="none"><path d="M20 4 L34 10 V19 C34 27 28 34 20 36 C12 34 6 27 6 19 V10 Z" stroke="currentColor" stroke-width="2.2"/><path d="M14 20 L18 24 L27 14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`
   },
   admin: {
     label:'Admin', color:'var(--accent-2)',
-    desc:'Create exams, generate questions with AI, publish them, and review every candidate report.',
+    desc:'Create exams, publish them so every candidate can see and attend, and review every candidate report.',
     icon:`<svg viewBox="0 0 40 40" width="30" height="30" fill="none"><rect x="6" y="9" width="28" height="20" rx="2.5" stroke="currentColor" stroke-width="2.2"/><path d="M6 15 H34" stroke="currentColor" stroke-width="2.2"/><circle cx="11" cy="12" r="1.2" fill="currentColor"/><path d="M13 22 H27 M13 26 H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`
   },
   recruiter: {
@@ -361,7 +368,7 @@ function renderAuthScreen(){
     <button class="btn-ghost" onclick="renderRoleSelect()" style="margin-bottom:14px;">← Choose a different role</button>
     <div class="card scanline" style="border-top:3px solid ${meta.color};">
       <div class="kicker" style="color:${meta.color};">${meta.label} sign in</div>
-      <h2 style="font-size:21px;margin-bottom:18px;">${loginRole==='candidate' && loginMode==='signup' ? 'Create your account' : 'Welcome back'}</h2>
+      <h2 style="font-size:21px;margin-bottom:18px;">${loginMode==='signup' ? 'Create your '+meta.label.toLowerCase()+' account' : 'Welcome back'}</h2>
       <div id="loginFormArea"></div>
     </div>
   </div>`);
@@ -395,30 +402,35 @@ function demoCredsTable(){
     <div class="kicker" style="margin-bottom:8px;">Candidate sign-up format</div>
     <table>
       <thead><tr><th>Field</th><th>Example</th></tr></thead>
-      <tbody><tr><td>Email</td><td class="mono">you${STUDENT_DOMAIN}</td></tr></tbody>
+      <tbody><tr><td>Student ID</td><td class="mono">STU2026001</td></tr></tbody>
     </table>`;
 }
+
+function idFieldLabel(){ return loginRole==='candidate' ? 'Student ID' : 'Email'; }
+function idFieldPlaceholder(){ return loginRole==='candidate' ? 'e.g. STU2026001' : 'you@example.com'; }
 
 function renderLoginForm(){
   const area = document.getElementById('loginFormArea');
   if(!area) return;
-  if(loginRole==='candidate' && loginMode==='signup'){
+
+  if(loginMode==='signup'){
     area.innerHTML = `
       <div class="field"><label>Full name</label><input id="suName" placeholder="Your name"/></div>
-      <div class="field"><label>Student email</label><input id="suEmail" placeholder="you${STUDENT_DOMAIN}"/></div>
+      <div class="field"><label>${idFieldLabel()}</label><input id="suId" placeholder="${idFieldPlaceholder()}"/></div>
       <div class="field"><label>Password</label><input id="suPass" type="password" placeholder="Create a password"/></div>
       <div id="loginErr" style="color:var(--risk-high);font-size:12.5px;min-height:16px;margin-bottom:8px;"></div>
-      <button class="btn-primary btn-block" onclick="doSignup()">Create candidate account</button>
+      <button class="btn-primary btn-block" onclick="doSignup()">Create ${loginRole} account</button>
       <div style="text-align:center;margin-top:14px;"><span class="subtle">Already registered? </span><button class="link-btn" onclick="setLoginMode('login')">Log in</button></div>
     `;
     return;
   }
+
   area.innerHTML = `
-    <div class="field"><label>Email</label><input id="liEmail" placeholder="you@example.com"/></div>
+    <div class="field"><label>${idFieldLabel()}</label><input id="liId" placeholder="${idFieldPlaceholder()}"/></div>
     <div class="field"><label>Password</label><input id="liPass" type="password" placeholder="Password"/></div>
     <div id="loginErr" style="color:var(--risk-high);font-size:12.5px;min-height:16px;margin-bottom:8px;"></div>
     <button class="btn-primary btn-block" onclick="doLogin()">Log in as ${loginRole.charAt(0).toUpperCase()+loginRole.slice(1)}</button>
-    ${loginRole==='candidate' ? `<div style="text-align:center;margin-top:14px;"><span class="subtle">New candidate? </span><button class="link-btn" onclick="setLoginMode('signup')">Sign up</button></div>` : ''}
+    <div style="text-align:center;margin-top:14px;"><span class="subtle">New ${loginRole}? </span><button class="link-btn" onclick="setLoginMode('signup')">Sign up</button></div>
     ${demoCredsTable()}
   `;
 }
@@ -428,29 +440,32 @@ function setLoginErr(msg){
   if(el) el.textContent = msg;
 }
 
-function findUserByEmail(email){
-  email = email.toLowerCase().trim();
-  const admin = ADMIN_ACCOUNTS.find(a=>a.email.toLowerCase()===email);
-  if(admin) return { ...admin, role:'admin' };
-  const rec = RECRUITER_ACCOUNTS.find(a=>a.email.toLowerCase()===email);
-  if(rec) return { ...rec, role:'recruiter' };
-  const cand = DB.candidates.find(c=>c.email.toLowerCase()===email);
-  if(cand) return { ...cand, role:'candidate' };
+// identifier = email for admin/recruiter, Student ID for candidates
+function findUserByIdentifier(identifier){
+  const idLower = identifier.toLowerCase().trim();
+  const admin = [...ADMIN_ACCOUNTS, ...DB.admins].find(a=>a.email.toLowerCase()===idLower);
+  if(admin) return { ...admin, role:'admin', identifier: admin.email };
+  const rec = [...RECRUITER_ACCOUNTS, ...DB.recruiters].find(a=>a.email.toLowerCase()===idLower);
+  if(rec) return { ...rec, role:'recruiter', identifier: rec.email };
+  // Student IDs are matched case-sensitively as typically issued, but we normalise trimming only
+  const cand = DB.candidates.find(c=>c.studentId.toLowerCase()===idLower);
+  if(cand) return { ...cand, role:'candidate', identifier: cand.studentId };
   return null;
 }
 
 function doLogin(){
-  const email = document.getElementById('liEmail').value.trim();
+  const identifier = document.getElementById('liId').value.trim();
   const pass = document.getElementById('liPass').value;
-  if(!email || !pass){ setLoginErr('Enter both email and password.'); return; }
-  const user = findUserByEmail(email);
+  const idLabel = idFieldLabel();
+  if(!identifier || !pass){ setLoginErr(`Enter both ${idLabel} and password.`); return; }
+  const user = findUserByIdentifier(identifier);
   if(!user){ setLoginErr('Invalid credentials.'); return; }
   if(user.role !== loginRole){
     setLoginErr(`Invalid credentials. This account is not registered as ${loginRole.charAt(0).toUpperCase()+loginRole.slice(1)}.`);
     return;
   }
   if(user.password !== pass){ setLoginErr('Invalid credentials.'); return; }
-  session = { role:user.role, email:user.email, name:user.name };
+  session = { role:user.role, identifier:user.identifier, name:user.name };
   toast(`Welcome back, ${user.name.split(' ')[0]}.`);
   if(session.role==='candidate') renderCandidateDashboard();
   else if(session.role==='admin') renderAdminPanel();
@@ -459,23 +474,44 @@ function doLogin(){
 
 function doSignup(){
   const name = document.getElementById('suName').value.trim();
-  const email = document.getElementById('suEmail').value.trim().toLowerCase();
+  const identifier = document.getElementById('suId').value.trim();
   const pass = document.getElementById('suPass').value;
-  if(!name || !email || !pass){ setLoginErr('Fill in all fields.'); return; }
-  if(!email.endsWith(STUDENT_DOMAIN)){ setLoginErr(`Candidates must sign up with a ${STUDENT_DOMAIN} email address.`); return; }
-  if(findUserByEmail(email)){ setLoginErr('An account with this email already exists.'); return; }
-  DB.candidates.push({ email, name, password: pass });
+  const idLabel = idFieldLabel();
+  if(!name || !identifier || !pass){ setLoginErr('Fill in all fields.'); return; }
+
+  if(loginRole==='candidate'){
+    if(findUserByIdentifier(identifier)){ setLoginErr('An account with this Student ID already exists.'); return; }
+    DB.candidates.push({ studentId: identifier, name, password: pass });
+    saveDB();
+    session = { role:'candidate', identifier, name };
+    toast('Account created. Welcome!');
+    renderCandidateDashboard();
+    return;
+  }
+
+  // Admin / recruiter signup — validated as an email address
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+  if(!emailOk){ setLoginErr(`Enter a valid ${idLabel.toLowerCase()}.`); return; }
+  const email = identifier.toLowerCase();
+  if(findUserByIdentifier(email)){ setLoginErr('An account with this email already exists.'); return; }
+
+  if(loginRole==='admin'){
+    DB.admins.push({ email, name, password: pass });
+  } else {
+    DB.recruiters.push({ email, name, password: pass });
+  }
   saveDB();
-  session = { role:'candidate', email, name };
+  session = { role:loginRole, identifier:email, name };
   toast('Account created. Welcome!');
-  renderCandidateDashboard();
+  if(loginRole==='admin') renderAdminPanel();
+  else renderRecruiterDashboard();
 }
 
 /* ============================= CANDIDATE DASHBOARD ============================= */
 function renderCandidateDashboard(){
   if(!requireSession(['candidate'])) return;
   const exams = DB.exams.filter(e=>e.published);
-  const mySubs = DB.submissions.filter(s=>s.candidateEmail===session.email);
+  const mySubs = DB.submissions.filter(s=>s.candidateId===session.identifier);
   const submittedIds = new Set(mySubs.map(s=>s.examId));
 
   render(`
@@ -501,7 +537,7 @@ function renderCandidateDashboard(){
             </div>
             ${done
               ? `<button class="btn-secondary btn-block" onclick="viewReport('${sub.id}')">View report</button>`
-              : `<button class="btn-primary btn-block" onclick="startExam('${e.id}')">Start exam</button>`}
+              : `<button class="btn-primary btn-block" onclick="openCameraCheck('${e.id}')">Start exam</button>`}
           </div>`;
         }).join('')}
       </div>`}
@@ -510,7 +546,73 @@ function renderCandidateDashboard(){
 }
 
 /* ============================= EXAM RUNNER ============================= */
-function startExam(examId){
+/* ============================= PRE-EXAM CAMERA CHECK ============================= */
+let pendingExamId = null;   // exam waiting to start once camera check is done
+let checkStream = null;     // camera stream captured during the check, reused by the exam runner
+
+function openCameraCheck(examId){
+  if(!requireSession(['candidate'])) return;
+  pendingExamId = examId;
+  render(`
+    ${topbar()}
+    <div class="container" style="max-width:520px;padding-top:56px;padding-bottom:60px;">
+      <div class="card scanline">
+        <div class="kicker">Camera check</div>
+        <h2 style="font-size:20px;margin-bottom:10px;">Let's confirm your camera works</h2>
+        <p class="subtle" style="margin-bottom:16px;">
+          This exam is proctored. Your camera stays on for the whole attempt so we can flag it if your face isn't visible
+          or if someone else appears in frame. Nothing is recorded or uploaded — checks run locally in your browser.
+        </p>
+        <video id="checkPreview" autoplay muted playsinline style="width:100%;border-radius:8px;background:#000;margin-bottom:12px;"></video>
+        <div id="checkStatus" class="subtle" style="font-size:13px;margin-bottom:16px;">
+          <span class="badge-dot" style="background:var(--text-faint);"></span> Requesting camera access…
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn-secondary" style="flex:1;" onclick="cancelCameraCheck()">Cancel</button>
+          <button id="beginExamBtn" class="btn-primary" style="flex:1;" disabled onclick="confirmBeginExam()">Begin exam</button>
+        </div>
+      </div>
+    </div>
+  `);
+  requestCameraForCheck();
+}
+
+async function requestCameraForCheck(){
+  const statusEl = document.getElementById('checkStatus');
+  const btn = document.getElementById('beginExamBtn');
+  try{
+    checkStream = await navigator.mediaDevices.getUserMedia({ video:true });
+    const video = document.getElementById('checkPreview');
+    if(video){ video.srcObject = checkStream; video.play(); }
+    if(statusEl) statusEl.innerHTML = `<span class="badge-dot" style="background:var(--risk-low);"></span> Camera connected — you're good to go.`;
+    if(btn) btn.disabled = false;
+  }catch(e){
+    checkStream = null;
+    if(statusEl) statusEl.innerHTML = `<span class="badge-dot" style="background:var(--risk-high);"></span> Camera access denied or unavailable. Allow camera permission in your browser's address-bar icon, then retry.`;
+    if(btn){
+      btn.disabled = false;
+      btn.textContent = 'Begin without camera';
+      btn.className = 'btn-secondary';
+      btn.style.flex = '1';
+    }
+  }
+}
+
+function cancelCameraCheck(){
+  if(checkStream){ checkStream.getTracks().forEach(t=>t.stop()); checkStream = null; }
+  pendingExamId = null;
+  renderCandidateDashboard();
+}
+
+function confirmBeginExam(){
+  const examId = pendingExamId;
+  const stream = checkStream;
+  pendingExamId = null;
+  checkStream = null;
+  startExam(examId, stream);
+}
+
+function startExam(examId, preStream){
   const exam = DB.exams.find(e=>e.id===examId);
   if(!exam) return;
   attempt = {
@@ -537,7 +639,7 @@ function startExam(examId){
     try{ await document.documentElement.requestFullscreen(); }catch(e){}
     attachSecurityListeners();
     startTimer();
-    await startProctoring();
+    await startProctoring(preStream);
   }, 50);
 }
 
@@ -561,6 +663,7 @@ function updateRiskUI(){
   badge.textContent = `${b.label} · ${attempt.riskScore}%`;
 }
 function updateProctorStatus(text, level){
+  if(attempt){ attempt.lastProctorText = text; attempt.lastProctorLevel = level; }
   const el = document.getElementById('proctorStatus');
   if(!el) return;
   const color = level==='low' ? 'var(--risk-low)' : level==='med' ? 'var(--risk-med)' : 'var(--risk-high)';
@@ -613,9 +716,9 @@ function startTimer(){
   }, 1000);
 }
 
-async function startProctoring(){
+async function startProctoring(existingStream){
   try{
-    attempt.mediaStream = await navigator.mediaDevices.getUserMedia({ video:true });
+    attempt.mediaStream = existingStream || await navigator.mediaDevices.getUserMedia({ video:true });
     const video = document.getElementById('camPreview');
     if(video){ video.srcObject = attempt.mediaStream; video.play(); }
     attempt.faceDetector = ('FaceDetector' in window) ? new window.FaceDetector({ fastMode:true }) : null;
@@ -717,6 +820,25 @@ function renderExamRunner(){
     </div>
   `);
   updateRiskUI();
+  reattachCameraFeed();
+}
+
+// The question panel re-renders on every navigation/answer (fresh <video> tag each time),
+// so we have to re-bind the still-open camera stream to it every time — otherwise the
+// preview goes blank and face-detection silently stops working after question 1.
+function reattachCameraFeed(){
+  if(!attempt) return;
+  const video = document.getElementById('camPreview');
+  if(!video) return;
+  if(attempt.mediaStream){
+    if(video.srcObject !== attempt.mediaStream){
+      video.srcObject = attempt.mediaStream;
+      video.play().catch(()=>{});
+    }
+    updateProctorStatus(attempt.lastProctorText || 'Camera connected', attempt.lastProctorLevel || 'low');
+  } else {
+    updateProctorStatus(attempt.lastProctorText || 'Connecting camera…', attempt.lastProctorLevel || 'med');
+  }
 }
 
 function renderQuestion(q){
@@ -886,7 +1008,7 @@ async function submitExam(){
     id: uid(),
     examId: exam.id,
     examTitle: exam.title,
-    candidateEmail: session.email,
+    candidateId: session.identifier,
     candidateName: session.name,
     answers: attempt.answers,
     mcqScore, codingScore, subjectiveScore, totalScore,
@@ -949,7 +1071,7 @@ function renderReport(id){
       <button class="btn-ghost" onclick="${backFn}" style="margin-bottom:14px;">← Back</button>
       <div class="kicker">Candidate report</div>
       <h2 style="font-size:22px;margin-bottom:2px;">${esc(sub.examTitle)}</h2>
-      <p class="subtle" style="margin-bottom:24px;">${esc(sub.candidateName)} · ${esc(sub.candidateEmail)} · submitted ${new Date(sub.submittedAt).toLocaleString()}</p>
+      <p class="subtle" style="margin-bottom:24px;">${esc(sub.candidateName)} · ID: ${esc(sub.candidateId)} · submitted ${new Date(sub.submittedAt).toLocaleString()}</p>
 
       <div class="grid-3" style="margin-bottom:20px;">
         <div class="stat"><div class="stat-num">${sub.totalScore}%</div><div class="stat-label">Total score</div></div>
@@ -1065,20 +1187,8 @@ function renderAdminCreate(){
         <div class="field"><label>Exam title</label><input id="examTitle" placeholder="e.g. Python OOP Fundamentals"/></div>
         <div class="field"><label>Timer (minutes)</label><input id="examTimer" type="number" value="30"/></div>
         <div class="divider"></div>
-        <div class="kicker"><span class="ai-tag">AI</span> Question generator</div>
-        <div class="field"><label>Topic</label><input id="aiTopic" placeholder="e.g. Python OOP"/></div>
-        <div class="grid-2">
-          <div class="field"><label>Type</label>
-            <select id="aiQType"><option value="mcq">MCQ</option><option value="coding">Coding</option></select>
-          </div>
-          <div class="field"><label>Difficulty</label>
-            <select id="aiDifficulty"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select>
-          </div>
-        </div>
-        <div class="field"><label>Count</label><input id="aiCount" type="number" value="3" min="1" max="10"/></div>
-        <button class="btn-primary btn-block" onclick="generateAIQuestions()">Generate with AI</button>
-        <div id="aiStatus" class="subtle" style="margin-top:10px;min-height:16px;"></div>
-        <div class="divider"></div>
+        <div class="kicker">Add questions</div>
+        <p class="subtle" style="margin:-4px 0 14px;">Build the exam by adding MCQ or coding questions below.</p>
         <button class="btn-secondary btn-block" onclick="openManualMCQ()">+ Add manual MCQ</button>
         <button class="btn-secondary btn-block" style="margin-top:8px;" onclick="openManualCoding()">+ Add manual coding question</button>
       </div>
@@ -1092,31 +1202,6 @@ function renderAdminCreate(){
   `;
   renderDraftQuestions();
 }
-function setAIStatus(msg){ const el=document.getElementById('aiStatus'); if(el) el.textContent = msg; }
-
-async function generateAIQuestions(){
-  const topic = document.getElementById('aiTopic').value.trim();
-  const difficulty = document.getElementById('aiDifficulty').value;
-  const count = Math.min(10, parseInt(document.getElementById('aiCount').value)||3);
-  const qtype = document.getElementById('aiQType').value;
-  if(!topic){ setAIStatus('Enter a topic first.'); return; }
-  setAIStatus('Generating with AI…');
-  const sys = "You are an exam question generator. Return ONLY valid JSON, no markdown fences, no prose outside the JSON.";
-  let user;
-  if(qtype==='mcq'){
-    user = `Generate ${count} ${difficulty}-level multiple choice questions on "${topic}". Return a JSON array where each item is exactly: {"type":"mcq","topic":"${topic}","difficulty":"${difficulty}","text":"question text","options":["A","B","C","D"],"correctIndex":0,"explanation":"short explanation"}`;
-  } else {
-    user = `Generate ${count} ${difficulty}-level coding questions on "${topic}" that are solvable with a single JavaScript function named solve. Return a JSON array where each item is exactly: {"type":"coding","topic":"${topic}","difficulty":"${difficulty}","text":"problem statement that tells the candidate to implement function solve(...)","starterCode":"function solve() {\\n  \\n}","testCases":[{"input":[/*args*/],"expected":/*value*/}] (3 test cases)}`;
-  }
-  const text = await callAI(sys, user, 1000);
-  if(text===null){ setAIStatus('AI generation failed: ' + (lastAIError || 'unknown error — check console/network tab.')); return; }
-  const parsed = extractJSON(text);
-  if(!parsed || !Array.isArray(parsed)){ setAIStatus('AI responded but not with valid question JSON. Try a simpler topic or lower count.'); return; }
-  parsed.forEach(q=>{ q.id = uid(); draftQuestions.push(q); });
-  setAIStatus(`Added ${parsed.length} AI-generated question(s) below. Review before publishing.`);
-  renderDraftQuestions();
-}
-
 /* ---- Modal helpers ---- */
 function showModal(innerHtml){
   closeModal();
@@ -1288,7 +1373,7 @@ function renderDraftQuestions(){
   if(countEl) countEl.textContent = `Draft questions (${draftQuestions.length})`;
   const publishBtn = document.getElementById('publishBtn');
   if(publishBtn) publishBtn.disabled = draftQuestions.length===0;
-  if(draftQuestions.length===0){ list.innerHTML = `<div class="empty" style="padding:24px;">No questions yet. Generate with AI or add manually.</div>`; return; }
+  if(draftQuestions.length===0){ list.innerHTML = `<div class="empty" style="padding:24px;">No questions yet. Add a manual MCQ or coding question to get started.</div>`; return; }
   list.innerHTML = draftQuestions.map((q,i)=>`
     <div class="card" style="background:var(--surface-2);margin-bottom:10px;position:relative;">
       <button class="edit-btn" onclick="editDraft('${q.id}')">Edit</button>
@@ -1305,7 +1390,7 @@ function publishExam(){
   const timer = parseInt(document.getElementById('examTimer').value) || 30;
   if(!title){ toast('Enter an exam title.'); return; }
   if(draftQuestions.length===0){ toast('Add at least one question.'); return; }
-  const exam = { id: uid(), title, timerMinutes: timer, questions: draftQuestions, published: true, createdBy: session.email, createdAt: Date.now() };
+  const exam = { id: uid(), title, timerMinutes: timer, questions: draftQuestions, published: true, createdBy: session.identifier, createdAt: Date.now() };
   DB.exams.push(exam);
   saveDB();
   draftQuestions = [];
@@ -1362,7 +1447,7 @@ function renderAdminReports(){
         <tbody>
           ${subs.map(s=>{ const b=riskBand(s.riskScore); return `
             <tr>
-              <td>${esc(s.candidateName)}<br/><span class="subtle">${esc(s.candidateEmail)}</span></td>
+              <td>${esc(s.candidateName)}<br/><span class="subtle">ID: ${esc(s.candidateId)}</span></td>
               <td>${esc(s.examTitle)}</td>
               <td class="mono">${s.totalScore}%</td>
               <td><span class="pill risk-badge-${b.cls}">${b.label} · ${s.riskScore}%</span></td>
